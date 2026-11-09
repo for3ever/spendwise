@@ -73,3 +73,75 @@ jobs:
             ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy on Windows self-hosted runner
+    needs: docker
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Log in to Docker Hub for pull
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull and safely replace SpendWise
+        shell: cmd
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          @echo off
+          setlocal EnableExtensions EnableDelayedExpansion
+          set "BACKUP_NAME=spendwise-rollback-%GITHUB_RUN_ID%"
+          set "OLD_EXISTS=0"
+
+          docker version
+          if errorlevel 1 (
+            echo Docker Desktop is not available.
+            exit /b 1
+          )
+
+          docker pull %IMAGE_NAME%:latest
+          if errorlevel 1 (
+            echo Docker image pull failed. Existing service was not changed.
+            exit /b 1
+          )
+
+          docker inspect %BACKUP_NAME% >nul 2>&1
+          if not errorlevel 1 (
+            echo Rollback container name already exists: %BACKUP_NAME%
+            exit /b 1
+          )
+
+          docker inspect spendwise >nul 2>&1
+          if not errorlevel 1 (
+            set "OLD_EXISTS=1"
+            docker rename spendwise %BACKUP_NAME%
+            if errorlevel 1 exit /b 1
+            docker stop %BACKUP_NAME% >nul 2>&1
+          )
+
+          docker run -d --name spendwise --restart unless-stopped -p 8080:80 %IMAGE_NAME%:latest
+          if errorlevel 1 goto :rollback
+
+          timeout /t 5 /nobreak >nul
+          docker ps --filter "name=^spendwise$" --filter "status=running" --format "{{.Names}}" | findstr /x /c:"spendwise" >nul
+          if errorlevel 1 goto :rollback
+
+          echo SpendWise deployment is running.
+          if "%OLD_EXISTS%"=="1" docker rm %BACKUP_NAME% >nul
+          exit /b 0
+
+          :rollback
+          echo Deployment failed. Restoring the previous SpendWise container.
+          docker rm -f spendwise >nul 2>&1
+          if "%OLD_EXISTS%"=="1" (
+            docker rename %BACKUP_NAME% spendwise
+            docker start spendwise
+            if errorlevel 1 (
+              echo Rollback failed. Manual recovery is required.
+              exit /b 1
+            )
+            echo Previous SpendWise container restored.
+          )
+          exit /b 1
