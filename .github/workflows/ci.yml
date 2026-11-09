@@ -111,7 +111,9 @@ jobs:
         shell: powershell
         env:
           DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-        run: .github/scripts/deploy-self-hosted.ps1 -Image $env:DOCKER_IMAGE -Port 8080 -CandidatePort 18080
+        run: |
+          powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .github/scripts/deploy-self-hosted.ps1 -Image $env:DOCKER_IMAGE -Port 8080 -CandidatePort 18080
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify deployed container
         shell: powershell
