@@ -124,10 +124,17 @@ jobs:
           docker run -d --name spendwise --restart unless-stopped -p 8080:80 %IMAGE_NAME%:latest
           if errorlevel 1 goto :rollback
 
-          rem GitHub Actions cmd is non-interactive; timeout reads stdin and fails there.
+          rem GitHub Actions cmd is non-interactive; use ping for a stdin-free delay.
           ping 127.0.0.1 -n 6 >nul
-          docker ps --filter "name=^spendwise$" --filter "status=running" --format "{{.Names}}" | findstr /x /c:"spendwise" >nul
-          if errorlevel 1 goto :rollback
+          set "RUNNING="
+          for /f "delims=" %%R in ('docker inspect --format="{{.State.Running}}" spendwise 2^>nul') do set "RUNNING=%%R"
+          if /i not "!RUNNING!"=="true" (
+            echo New SpendWise container is not running. State:
+            docker inspect --format="status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}" spendwise
+            echo New SpendWise container logs:
+            docker logs spendwise
+            goto :rollback
+          )
 
           echo SpendWise deployment is running.
           if "%OLD_EXISTS%"=="1" docker rm %BACKUP_NAME% >nul
