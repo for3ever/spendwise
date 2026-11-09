@@ -85,7 +85,7 @@ jobs:
   deploy:
     name: Deploy on Windows self-hosted runner
     needs: docker-publish
-    runs-on: [self-hosted, windows, docker]
+    runs-on: [self-hosted, windows, X64]
     timeout-minutes: 15
     steps:
       - name: Checkout deployment script
