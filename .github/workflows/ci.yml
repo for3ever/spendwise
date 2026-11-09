@@ -124,7 +124,8 @@ jobs:
           docker run -d --name spendwise --restart unless-stopped -p 8080:80 %IMAGE_NAME%:latest
           if errorlevel 1 goto :rollback
 
-          timeout /t 5 /nobreak >nul
+          rem GitHub Actions cmd is non-interactive; timeout reads stdin and fails there.
+          ping 127.0.0.1 -n 6 >nul
           docker ps --filter "name=^spendwise$" --filter "status=running" --format "{{.Names}}" | findstr /x /c:"spendwise" >nul
           if errorlevel 1 goto :rollback
 
