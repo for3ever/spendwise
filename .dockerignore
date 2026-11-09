@@ -1,0 +1,12 @@
+.git
+.github
+.dockerignore
+Dockerfile
+README.md
+*.md
+node_modules
+dist
+coverage
+*.log
+*.tmp
+*.swp

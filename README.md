@@ -44,6 +44,18 @@ python -m http.server 4173
 
 브라우저에서 <http://localhost:4173>을 엽니다.
 
+### 방법 3: Docker Desktop + Nginx
+
+Docker Desktop이 실행 중인 상태에서 프로젝트 루트에서 다음 명령을 실행합니다.
+
+```powershell
+docker build -t spendwise:local .
+docker rm -f spendwise 2>$null
+docker run -d --name spendwise -p 8080:80 spendwise:local
+```
+
+브라우저에서 <http://localhost:8080>을 엽니다. 상태 확인은 `docker ps`, 로그 확인은 `docker logs spendwise`를 사용합니다.
+
 Chart.js는 CDN에서 로드되므로 차트 사용 시 인터넷 연결이 필요합니다.
 
 ## 데이터 저장 및 개인정보
