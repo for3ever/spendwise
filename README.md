@@ -100,6 +100,41 @@ git push origin main
 
 Push가 완료되면 **GitHub → Actions → SpendWise CI and Docker Publish**에서 검증 및 이미지 업로드 결과를 확인할 수 있습니다. 기존 `pages.yml`은 별도의 `pages` concurrency 그룹과 GitHub Pages 권한을 사용하므로 Docker Publish 작업과 독립적으로 실행됩니다.
 
+## Self-hosted Runner 자동 배포(CD)
+
+Docker 이미지 Push가 성공하면 같은 `ci.yml`의 `deploy` job이 Windows Self-hosted Runner에서 실행됩니다. 이 job은 `[self-hosted, windows, docker]` 라벨을 가진 Runner를 요구합니다.
+
+### Runner 등록 방법
+
+1. GitHub 저장소에서 **Settings → Actions → Runners → New self-hosted runner**를 엽니다.
+2. **Windows / x64**를 선택합니다.
+3. GitHub가 화면에 표시하는 최신 Runner 다운로드·압축 해제 명령을 Windows PowerShell에서 실행합니다.
+4. GitHub가 발급한 일회성 토큰으로 아래와 같은 등록 명령을 실행합니다. 실제 토큰과 URL은 GitHub 화면의 값을 사용하세요.
+
+```powershell
+.\config.cmd --url https://github.com/for3ever/spendwise --token <ONE_TIME_RUNNER_TOKEN> --name spendwise-windows --labels self-hosted,windows,x64,docker
+.\run.cmd
+```
+
+토큰은 저장소, README, workflow, 환경변수 파일에 저장하지 않습니다. Runner가 안정적으로 상시 실행되어야 한다면 GitHub가 제공하는 안내에 따라 관리자 권한으로 서비스 설치(`svc.cmd install`)를 선택할 수 있습니다.
+
+### CD 배포 절차
+
+1. `validate` job이 소스와 Docker 설정을 검증합니다.
+2. `docker-publish` job이 Docker Hub에 `latest`와 `sha-<GITHUB_SHA>`를 Push합니다.
+3. Push 성공 후 `deploy` job이 Self-hosted Runner에서 정확한 `sha-<GITHUB_SHA>` 이미지를 Pull합니다.
+4. `18080` 임시 포트의 후보 컨테이너에서 HTTP readiness를 확인합니다.
+5. 기존 `spendwise` 컨테이너만 백업 후 `8080` 포트로 새 컨테이너를 기동합니다.
+6. 새 컨테이너가 응답하지 않으면 로그를 출력하고 이전 컨테이너를 복원합니다.
+
+다른 컨테이너가 `8080` 또는 후보 포트를 사용 중이면 배포를 중단하며, 이름이 `spendwise`인 컨테이너라도 SpendWise 이미지가 아니면 교체하지 않습니다. 배포 실패 시 Actions 로그의 `Show deployment logs on failure` 단계와 Runner에서 아래 명령을 확인합니다.
+
+```powershell
+docker ps -a --filter "name=spendwise"
+docker logs spendwise
+docker inspect spendwise
+```
+
 ## 데이터 저장 및 개인정보
 
 거래 데이터와 예산은 브라우저별·사이트별 `LocalStorage`에만 저장됩니다. 서버로 전송하지 않습니다. 브라우저 저장 데이터를 삭제하면 SpendWise 데이터도 삭제되므로, 중요한 데이터는 별도 백업 후 관리하세요.

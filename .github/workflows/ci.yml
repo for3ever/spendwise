@@ -81,3 +81,49 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+
+  deploy:
+    name: Deploy on Windows self-hosted runner
+    needs: docker-publish
+    runs-on: [self-hosted, windows, docker]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout deployment script
+        uses: actions/checkout@v4
+
+      - name: Log in and pull published image
+        shell: pwsh
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        run: |
+          $env:DOCKERHUB_TOKEN | docker login --username $env:DOCKERHUB_USERNAME --password-stdin
+          if ($LASTEXITCODE -ne 0) { throw 'Docker Hub login failed.' }
+          try {
+            docker pull $env:DOCKER_IMAGE
+            if ($LASTEXITCODE -ne 0) { throw "Docker pull failed for $env:DOCKER_IMAGE" }
+          } finally {
+            docker logout | Out-Null
+          }
+
+      - name: Replace SpendWise container with rollback protection
+        shell: pwsh
+        env:
+          DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        run: .github/scripts/deploy-self-hosted.ps1 -Image $env:DOCKER_IMAGE -Port 8080 -CandidatePort 18080
+
+      - name: Verify deployed container
+        shell: pwsh
+        run: |
+          docker ps --filter "name=^spendwise$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          docker inspect --format '{{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}unavailable{{end}}' spendwise
+          $response = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8080/
+          if ($response.StatusCode -ne 200) { throw "SpendWise returned HTTP $($response.StatusCode)" }
+
+      - name: Show deployment logs on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          docker ps -a --filter "name=spendwise" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          docker logs spendwise 2>&1
