@@ -46,6 +46,60 @@ python -m http.server 4173
 
 Chart.js는 CDN에서 로드되므로 차트 사용 시 인터넷 연결이 필요합니다.
 
+## Docker 실행
+
+Docker Desktop이 설치되고 실행 중인 환경에서 프로젝트 루트에서 실행합니다.
+
+```powershell
+cd C:\Users\당근\Desktop\sw
+docker build -t spendwise:local .
+docker run --rm --name spendwise -p 8080:80 spendwise:local
+```
+
+브라우저에서 <http://localhost:8080>을 열면 Nginx가 SpendWise 정적 파일을 제공합니다. 종료하려면 실행 중인 터미널에서 `Ctrl+C`를 누르거나 별도 터미널에서 아래 명령을 사용합니다.
+
+```powershell
+docker stop spendwise
+```
+
+컨테이너 내부 Nginx는 `/` 요청을 `index.html`로 처리하고, CSS·JavaScript 경로를 그대로 제공하도록 설정되어 있습니다. 거래 데이터는 컨테이너가 아닌 브라우저의 LocalStorage에 저장되므로 컨테이너를 다시 만들어도 브라우저 저장 데이터는 유지됩니다.
+
+## Docker Hub 자동 배포
+
+`.github/workflows/ci.yml`은 `main` 브랜치 Push 또는 수동 실행 시 다음 작업을 수행합니다.
+
+1. 필수 소스·Docker 설정 파일 확인
+2. `app.js` 구문 및 정적 리소스 경로 검증
+3. Nginx Dockerfile 및 `.dockerignore` 검사
+4. Docker Hub 로그인
+5. Docker 이미지 빌드 및 Push
+
+Docker Hub 저장소는 `<DOCKERHUB_USERNAME>/spendwise-app`을 기준으로 합니다. 이미지에는 다음 두 태그가 생성됩니다.
+
+```text
+<DOCKERHUB_USERNAME>/spendwise-app:latest
+<DOCKERHUB_USERNAME>/spendwise-app:sha-<GITHUB_SHA>
+```
+
+### GitHub Repository Secrets 설정
+
+GitHub 저장소의 **Settings → Secrets and variables → Actions → New repository secret**에서 아래 두 값을 추가합니다.
+
+- `DOCKERHUB_USERNAME`: Docker Hub 사용자명
+- `DOCKERHUB_TOKEN`: Docker Hub Access Token
+
+토큰은 Docker Hub의 **Account Settings → Personal access tokens**에서 생성하고, 비밀번호 대신 사용합니다. 두 값은 워크플로 파일이나 소스 코드에 작성하지 않습니다.
+
+### 필요한 Git 명령
+
+```powershell
+git add .github/workflows/ci.yml README.md
+git commit -m "Add Docker Hub CI pipeline"
+git push origin main
+```
+
+Push가 완료되면 **GitHub → Actions → SpendWise CI and Docker Publish**에서 검증 및 이미지 업로드 결과를 확인할 수 있습니다. 기존 `pages.yml`은 별도의 `pages` concurrency 그룹과 GitHub Pages 권한을 사용하므로 Docker Publish 작업과 독립적으로 실행됩니다.
+
 ## 데이터 저장 및 개인정보
 
 거래 데이터와 예산은 브라우저별·사이트별 `LocalStorage`에만 저장됩니다. 서버로 전송하지 않습니다. 브라우저 저장 데이터를 삭제하면 SpendWise 데이터도 삭제되므로, 중요한 데이터는 별도 백업 후 관리하세요.
